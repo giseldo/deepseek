@@ -9,6 +9,18 @@ client = OpenAI(
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 
+# Método que será chamado quando a API do LLM retornar uma chamada a tool (tool_calls)
+def create_text_file(filename: str, content: str) -> str:
+    # Garante que o nome do arquivo não contenha caminhos absolutos ou traversal
+    safe_name = os.path.basename(filename)
+    if not safe_name:
+        return "Erro: nome de arquivo inválido."
+    filepath = os.path.join(BASE_DIR, safe_name)
+    with open(filepath, "w", encoding="utf-8") as f:
+        f.write(content)
+    return f"Arquivo '{safe_name}' criado com sucesso em {BASE_DIR}."
+
+# Definição da chamada para ser incluido na API do LLM
 TOOLS = [
     {
         "type": "function",
@@ -33,16 +45,7 @@ TOOLS = [
     }
 ]
 
-def create_text_file(filename: str, content: str) -> str:
-    # Garante que o nome do arquivo não contenha caminhos absolutos ou traversal
-    safe_name = os.path.basename(filename)
-    if not safe_name:
-        return "Erro: nome de arquivo inválido."
-    filepath = os.path.join(BASE_DIR, safe_name)
-    with open(filepath, "w", encoding="utf-8") as f:
-        f.write(content)
-    return f"Arquivo '{safe_name}' criado com sucesso em {BASE_DIR}."
-
+# harness / rédea
 def run_agent(user_input: str):
     messages = [
         {
@@ -84,8 +87,7 @@ def run_agent(user_input: str):
         response = client.chat.completions.create(
             model="deepseek-chat",
             messages=messages,
-            tools=TOOLS,
-            tool_choice="auto"
+            tools=TOOLS
         )
         message = response.choices[0].message
 
