@@ -1,0 +1,96 @@
+import json
+import os
+from openai import OpenAI
+
+client = OpenAI(
+    api_key="",
+    base_url="https://api.deepseek.com"
+)
+
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+
+TOOLS = [
+    {
+        "type": "function",
+        "function": {
+            "name": "create_text_file",
+            "description": "Cria um arquivo de texto no diretório do projeto com o nome e conteúdo fornecidos.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "filename": {
+                        "type": "string",
+                        "description": "Nome do arquivo a ser criado, incluindo extensão (ex: 'notas.txt')."
+                    },
+                    "content": {
+                        "type": "string",
+                        "description": "Conteúdo textual a ser gravado no arquivo."
+                    }
+                },
+                "required": ["filename", "content"]
+            }
+        }
+    }
+]
+
+def create_text_file(filename: str, content: str) -> str:
+    # Garante que o nome do arquivo não contenha caminhos absolutos ou traversal
+    safe_name = os.path.basename(filename)
+    if not safe_name:
+        return "Erro: nome de arquivo inválido."
+    filepath = os.path.join(BASE_DIR, safe_name)
+    with open(filepath, "w", encoding="utf-8") as f:
+        f.write(content)
+    return f"Arquivo '{safe_name}' criado com sucesso em {BASE_DIR}."
+
+def run_agent(user_input: str):
+    messages = [
+        {
+            "role": "system",
+            "content": (
+                "Você é um assistente que ajuda o usuário a criar arquivos de texto. "
+                "Quando o usuário pedir para criar um arquivo, use a ferramenta create_text_file. "
+                "Responda sempre em português brasileiro."
+            )
+        },
+        {"role": "user", "content": user_input}
+    ]
+
+    # Primeira chamada — o modelo pode retornar uma tool call
+    response = client.chat.completions.create(
+        model="deepseek-chat",
+        messages=messages,
+        tools=TOOLS
+    )
+
+    message = response.choices[0].message
+
+    # Enquanto houver tool calls, executa e devolve o resultado ao modelo
+    while message.tool_calls:
+        messages.append(message)  # adiciona a resposta do assistente com tool_calls
+
+        for tool_call in message.tool_calls:
+            args = json.loads(tool_call.function.arguments)
+            result = create_text_file(**args)
+            print(f"[tool] {result}")
+
+            messages.append({
+                "role": "tool",
+                "tool_call_id": tool_call.id,
+                "content": result
+            })
+
+        # Nova chamada para o modelo gerar a resposta final
+        response = client.chat.completions.create(
+            model="deepseek-chat",
+            messages=messages,
+            tools=TOOLS,
+            tool_choice="auto"
+        )
+        message = response.choices[0].message
+
+    return message.content
+
+while True:
+    user_input = input("User: ")
+    print("Bot:", run_agent(user_input))
